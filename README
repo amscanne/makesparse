@@ -1,0 +1,8 @@
+                             README
+                           ==========
+
+This is a simple utility to use the new FALLOC_FL_PUNCH_HOLE mechanism for
+fallocate().  It was written as a quick and simple demonstration of when you
+might want to quickly scan memory for zeros (although it probably won't matter
+here for practical reasons, as the backing filesystem is almost certainly going
+to be your bottleneck) to accomany a blog post.  It's pretty self-explanatory.
