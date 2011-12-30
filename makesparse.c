@@ -46,19 +46,46 @@
 #error "Sorry, looks like this system doesn't have FALLOC_FL_PUNCH_HOLE."
 #endif
 
-static char* real_zeros = NULL;
-static int   real_zeros_len = 0;
-
-int
-is_zeros(char* data, unsigned int len)
+static inline int
+is_zeros_aligned(unsigned long* data, unsigned int len)
 {
-    if( len > real_zeros_len )
+    unsigned long r1 = 0;
+    unsigned long r2 = 0;
+    unsigned long r3 = 0;
+    unsigned long r4 = 0;
+    int i;
+
+    for( i = 0; i < len / (4 * sizeof(unsigned long)); i++ )
     {
-        real_zeros = realloc(real_zeros, len);
-        memset(real_zeros, 0, len);
+        r1 |= *(data++);
+        r2 |= *(data++);
+        r3 |= *(data++);
+        r4 |= *(data++);
     }
 
-    return !memcmp(data, real_zeros, len);
+    r1 |= r3;
+    r2 |= r4;
+    r1 |= r2;
+
+    return !r1;
+}
+
+static inline int
+is_zeros_unaligned(char* data, unsigned int len)
+{
+    int i;
+    for( i = 0; i < len; i++ )
+        if( data[i] != 0 )
+            return 0;
+    return 1;
+}
+
+static inline int
+is_zeros(char* data, unsigned int len)
+{
+    unsigned int tail = len % (4 * sizeof(unsigned long));
+    return is_zeros_aligned((unsigned long*)data, len - tail)
+        && is_zeros_unaligned(data + (len - tail), tail);
 }
 
 int
@@ -68,10 +95,10 @@ scanfile(int fd, off_t filesize, unsigned int blksize)
     char buffer[blksize];
 
     /*
-     * NOTE: We don't do a mmap() of the file here, because
+     * NOTE: We don't do a full mmap() of the file here, because
      * this utility will likely be used with very large files
      * (> 2GB) possibly on 32bit systems.  Since the mmap() 
-     * would file in this case, and supporting mapping chunks
+     * would fail in this case, and supporting mapping chunks
      * is probably not really worth it -- we just use standard
      * read() to grab the file contents.
      */
@@ -82,16 +109,16 @@ scanfile(int fd, off_t filesize, unsigned int blksize)
         int nread = read(fd, buffer, toread);
         if( nread < toread )
         {
-            fprintf(stderr, "error: short read @ %lld: %s\n",
+            fprintf(stderr, "error: short read @ %llu: %s\n",
                     (unsigned long long)current, strerror(errno));
             return -1;
         }
         if( is_zeros(buffer, nread) )
         {
-            if( fallocate(fd, FALLOC_FL_PUNCH_HOLE,
-                          current, nread) < 0 )
+            if( fallocate(fd, FALLOC_FL_PUNCH_HOLE|FALLOC_FL_KEEP_SIZE,
+                          current, blksize) < 0 )
             {
-                fprintf(stderr, "error: hole punch @ %lld failed: %s\n",
+                fprintf(stderr, "error: hole punch @ %llu failed: %s\n",
                         (unsigned long long)current, strerror(errno));
                 return -1;
             }

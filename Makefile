@@ -4,7 +4,7 @@ CC := gcc
 RM := rm
 
 makesparse: makesparse.c
-	@$(CC) -o $@ $^
+	@$(CC) -O3 -o $@ $^
 
 clean:
 	@$(RM) makesparse
